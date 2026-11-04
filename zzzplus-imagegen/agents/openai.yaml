@@ -1,0 +1,6 @@
+interface:
+  display_name: "ZZZPLUS 图片生成"
+  short_description: "复用当前 Codex 中转配置，生成图片、编辑图片与融合多张参考图"
+  default_prompt: "使用 $zzzplus-imagegen，根据我的描述生成或编辑图片，并展示保存后的图片。"
+policy:
+  allow_implicit_invocation: true
