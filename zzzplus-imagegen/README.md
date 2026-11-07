@@ -1,8 +1,8 @@
 # ZZZPLUS Codex 图片生成 Skill
 
-版本：1.0.0。Python 3.11+，无需 pip 运行依赖。Windows 默认调用自带 PowerShell（优先 PowerShell 7，其次 5.1）；macOS/Linux 默认使用 Python 标准库网络请求。
+版本：1.1.0。Python 3.11+，无需 pip 运行依赖。Windows 默认调用自带 PowerShell（优先 PowerShell 7，其次 5.1）；macOS/Linux 默认使用 Python 标准库网络请求。
 
-通过自然语言生成图片、设计海报/宣传图/插画/封面、编辑单图、融合多张参考图。固定模型 `gpt-image-2.5`，只读现有 Codex 中转 Provider 和可复用静态凭证，不修改主模型，不要求设置 ZZZPLUS_API_KEY。
+通过自然语言生成图片、设计海报/宣传图/插画/封面、编辑单图、融合多张参考图。默认模型 `gpt-image-2.6`，可选 `grok-imagine-image-2.0`（`--model`），只读现有 Codex 中转 Provider 和可复用静态凭证，不修改主模型，不要求设置 ZZZPLUS_API_KEY。
 
 **验收边界：请先阅读 [测试报告](TEST_REPORT.md) 和 [未解决问题](KNOWN_ISSUES.md)。异步脚本支持可配置的真实轮询，但上游公开文档未给出查询协议，不能开箱即用地保证异步端到端成功。**
 

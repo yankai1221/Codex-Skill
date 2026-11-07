@@ -1,1 +1,2 @@
 91c5364c3d68caad24e5f55ade78197a201186011af1aebc96f2d373249e092b  zzzplus-imagegen-1.0.0.zip
+15df225bfbd270615ab8fbf7f596e8de673cd476d260120c0273b75e32fb8b7a  zzzplus-imagegen-1.1.0.zip

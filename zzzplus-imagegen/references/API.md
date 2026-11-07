@@ -9,7 +9,7 @@
 - 官方 Skill 规范：https://developers.openai.com/codex/skills/ ，现重定向到 https://learn.chatgpt.com/docs/build-skills 。
 - Codex 配置参考：https://developers.openai.com/codex/config-reference/ 。
 
-文档确认：`POST /v1/images/generations` 使用 JSON，`model=gpt-image-2.5`、`prompt`；返回 `data[0].b64_json`。编辑使用 `/v1/images/edits`，multipart 实际文件上传。文档接受重复 image 或 image[]；本 Skill 严格使用重复 `image`。1–8 张 PNG/JPEG/WebP，每张最多 10MB，总计最多 40MB。不传 mask、size、quality、n、stream，避免声称服务端无法保证的能力。
+文档确认：`POST /v1/images/generations` 使用 JSON，`model=gpt-image-2.6`（默认）或 `grok-imagine-image-2.0`、`prompt`；返回 `data[0].b64_json`。编辑使用 `/v1/images/edits`，multipart 实际文件上传。文档接受重复 image 或 image[]；本 Skill 严格使用重复 `image`。1–8 张 PNG/JPEG/WebP，每张最多 10MB，总计最多 40MB。不传 mask、size、quality、n、stream，避免声称服务端无法保证的能力。
 
 所有运行地址来自当前 Provider；文档的上游地址仅作为来源，不是运行回退地址。base_url 去末尾斜杠，若未以 `/v1` 结尾则追加 `/v1`，再追加 `/images/generations` 或 `/images/edits`；保留已有代理路径。不接受 HTTP、地址中的用户名/密码、查询参数或片段。
 

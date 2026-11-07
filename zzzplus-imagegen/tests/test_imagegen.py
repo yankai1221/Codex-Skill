@@ -145,7 +145,7 @@ class HTTPContractTests(unittest.TestCase):
                     path=image_api.generate(p,'test prompt',Path(tmp),async_mode=True,spec=spec,interval=.01,wait=1,job_file=Path(tmp)/f'job{i}.json')
                     self.assertEqual(path.read_bytes(),PNG)
             self.assertEqual([x[0] for x in received],['/v1/images/generations','/v1/jobs/job-123']*2)
-            self.assertEqual(received[0][2],{'model':'gpt-image-2.5','prompt':'test prompt'})
+            self.assertEqual(received[0][2],{'model':'gpt-image-2.6','prompt':'test prompt'})
             self.assertEqual(received[0][1]['Prefer'],'respond-async')
             self.assertNotEqual(received[0][1]['Idempotency-Key'],received[2][1]['Idempotency-Key'])
         finally:

@@ -11,8 +11,9 @@ from image_api import generate, poll, APIError
 
 
 def main():
-    p=argparse.ArgumentParser(description='通过当前 Codex Provider 使用 gpt-image-2.5 生图或编辑')
+    p=argparse.ArgumentParser(description='通过当前 Codex Provider 使用 gpt-image-2.6（默认）或 grok-imagine-image-2.0 生图或编辑')
     p.add_argument('mode',choices=['check','generate','edit','async','poll'])
+    p.add_argument('--model',choices=list(image_api.MODELS),default=image_api.MODELS[0],help='生图模型，默认 gpt-image-2.6')
     p.add_argument('--prompt')
     p.add_argument('--prompt-file',type=Path)
     p.add_argument('--image',action='append',type=Path,default=[])
@@ -30,9 +31,10 @@ def main():
     a=p.parse_args()
     try:
         image_api.TRANSPORT=a.transport
+        image_api.MODEL=a.model
         provider=resolve(a.codex_home,a.profile,a.config,layers=a.config_layer)
         if a.mode=='check':
-            print(json.dumps({'provider':provider.name,'base_url':provider.base_url,'credential_source':provider.credential_source,'model':'gpt-image-2.5'},ensure_ascii=False,indent=2))
+            print(json.dumps({'provider':provider.name,'base_url':provider.base_url,'credential_source':provider.credential_source,'model':image_api.MODEL},ensure_ascii=False,indent=2))
             return 0
         if min(a.interval,a.wait,a.timeout)<=0: raise APIError('超时和轮询间隔必须大于零。')
         spec=json.loads(a.async_spec.read_text(encoding='utf-8-sig')) if a.async_spec else None

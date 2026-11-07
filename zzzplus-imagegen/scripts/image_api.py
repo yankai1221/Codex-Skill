@@ -13,7 +13,8 @@ from urllib.parse import urljoin, urlsplit, quote
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
-MODEL = 'gpt-image-2.5'
+MODELS = ('gpt-image-2.6', 'grok-imagine-image-2.0')
+MODEL = MODELS[0]
 MAX_RESPONSE = 80 * 1024 * 1024
 TRANSPORT = 'auto'
 

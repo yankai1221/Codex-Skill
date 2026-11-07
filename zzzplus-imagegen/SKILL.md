@@ -1,11 +1,11 @@
 ---
 name: zzzplus-imagegen
-description: Use when users request image generation, posters, product promotional images, illustrations, covers, image editing or multi-image reference blending through their configured Codex relay provider using gpt-image-2.5. 支持生成图片、设计海报、修改图片和多图融合，以及已确认查询协议的异步文生图。
+description: Use when users request image generation, posters, product promotional images, illustrations, covers, image editing or multi-image reference blending through their configured Codex relay provider using gpt-image-2.6 (default) or grok-imagine-image-2.0. 支持生成图片、设计海报、修改图片和多图融合，以及已确认查询协议的异步文生图。
 ---
 
 # ZZZPLUS 图片生成
 
-把自然语言要求交给随附脚本执行，无需用户编写 API 请求。固定模型 `gpt-image-2.5`；使用当前 Codex Provider 中转地址，绝不切换到 Wokey 上游或其他模型。
+把自然语言要求交给随附脚本执行，无需用户编写 API 请求。默认模型 `gpt-image-2.6`，可用 `--model grok-imagine-image-2.0` 切换，只允许这两个；使用当前 Codex Provider 中转地址，绝不切换到 Wokey 上游或其他模型。
 
 ## 开始前
 
