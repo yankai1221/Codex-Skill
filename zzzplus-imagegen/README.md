@@ -1,8 +1,8 @@
 # ZZZPLUS Codex 图片生成 Skill
 
-版本：1.1.0。Python 3.11+，无需 pip 运行依赖。Windows 默认调用自带 PowerShell（优先 PowerShell 7，其次 5.1）；macOS/Linux 默认使用 Python 标准库网络请求。
+版本：1.0.3。Python 3.11+，无需 pip 运行依赖。网络请求方式在提交前自动选择：Windows 先试系统 PowerShell，不通则改用 Python 标准库（urllib）；macOS/Linux 使用 urllib。
 
-通过自然语言生成图片、设计海报/宣传图/插画/封面、编辑单图、融合多张参考图。默认模型 `gpt-image-2.6`，可选 `grok-imagine-image-2.0`（`--model`），只读现有 Codex 中转 Provider 和可复用静态凭证，不修改主模型，不要求设置 ZZZPLUS_API_KEY。
+通过自然语言生成图片、设计海报/宣传图/插画/封面、编辑单图、融合多张参考图。固定模型 `gpt-image-2.6`，只读现有 Codex 中转 Provider 和可复用静态凭证，不修改主模型，不要求设置 ZZZPLUS_API_KEY。
 
 **验收边界：请先阅读 [测试报告](TEST_REPORT.md) 和 [未解决问题](KNOWN_ISSUES.md)。异步脚本支持可配置的真实轮询，但上游公开文档未给出查询协议，不能开箱即用地保证异步端到端成功。**
 
@@ -28,7 +28,9 @@ python scripts/imagegen.py check
 
 只显示 Provider 地址、认证来源和固定图片模型，不显示密钥。Skill 不会更改现有配置。如果只有 Codex OAuth 登录缓存或凭证助手，需用户在本机为当前 Provider 补充兼容静态凭证配置；不能假设登录缓存能被脚本使用。不要把密钥贴到聊天、命令行或 GitHub。
 
-`--transport auto` 在 Windows 提交前选定 PowerShell，其他系统选定 urllib；也可显式传 `--transport urllib` 或 `--transport powershell`。失败后绝不自动换方式重复提交。Windows 的认证信息仅通过子进程标准输入传递，不放进命令行或临时文件。完整 PowerShell 文件也包含在安装包中。
+`--transport auto`（默认）在提交前用不收费的 `GET /models` 依次检测连通性（Windows：PowerShell → urllib；其他系统：urllib），选第一个能连通的方式；`check` 会显示选中的 `transport` 和失败的方式。检测全部失败时直接报错，不提交生图。也可显式传 `--transport urllib` 或 `--transport powershell`。选定后只用该方式提交一次，生图提交失败后绝不自动换方式重发，避免重复扣费。
+
+**生图失败提示“SSL/TLS 握手失败”或“安全包中没有可用的凭证”时**：这是本机 PowerShell 的 HTTPS 问题（与 Python 无关）。1.0.3 起会自动改用 urllib；旧版本可在命令后加 `--transport urllib` 临时绕过。Windows 的认证信息仅通过子进程标准输入传递，不放进命令行或临时文件。完整 PowerShell 文件也包含在安装包中。
 
 ## 在 Codex 中使用
 

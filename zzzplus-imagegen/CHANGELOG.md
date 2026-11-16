@@ -1,5 +1,13 @@
 # 更新说明
 
+## 1.1.1 — 2026-11-17
+
+- 修复部分 Windows 机器无法生图：PowerShell 的 HTTPS 握手失败（"安全包中没有可用的凭证"），旧版 Windows 一律只用 PowerShell 且把所有底层异常压成 "HTTP 0"。
+- 新增提交前传输检测：`GET /models`（免费）依次试 PowerShell → urllib，选第一个能连通的；全部不通则不提交。`check` 输出所选 `transport`。选定后生图 POST 只发一次，失败不换方式重发。
+- 错误信息区分 SSL 握手失败 / 连接失败 / 超时 / HTTP 状态码，不再出现 "HTTP 0"，且不含密钥、URL 查询或响应正文。
+- `http_request.ps1` 显式启用 TLS 1.2/1.3，并返回按异常类型分类的错误种类（不依赖本地化文案）。
+- 测试由 20 项增至 28 项；用 urllib 和 auto 各真实生成一张图验证。
+
 ## 1.1.0 — 2026-11-08
 
 - 中转站生图模型改为 `gpt-image-2.6`（默认）和 `grok-imagine-image-2.0`，新增 `--model` 参数，只允许这两个模型。

@@ -3,6 +3,27 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+# Windows PowerShell 5.1 on older/hardened systems may not negotiate TLS 1.2+ by default.
+try {
+    $protocols = [Net.SecurityProtocolType]::Tls12
+    if ([Enum]::GetNames([Net.SecurityProtocolType]) -contains 'Tls13') { $protocols = $protocols -bor [Net.SecurityProtocolType]::Tls13 }
+    [Net.ServicePointManager]::SecurityProtocol = $protocols
+} catch {}
+# Classify a failure without ever emitting the raw message (may contain URL details).
+# Windows error messages are localized, so only exception types and WebExceptionStatus names are inspected.
+function Get-ErrorKind($ex) {
+    $text = ''
+    $cursor = $ex
+    while ($cursor) {
+        $text += ' ' + $cursor.GetType().FullName
+        if ($cursor -is [System.Net.WebException]) { $text += ' ' + $cursor.Status.ToString() }
+        $cursor = $cursor.InnerException
+    }
+    if ($text -match 'SendFailure|SecureChannelFailure|TrustFailure|AuthenticationException|Win32Exception|CryptographicException|CertificateProblem') { return 'ssl' }
+    if ($text -match 'Timeout|TaskCanceled|OperationCanceled') { return 'timeout' }
+    if ($text -match 'NameResolutionFailure|ConnectFailure|ProxyNameResolutionFailure|SocketException|HttpRequestException') { return 'connect' }
+    return 'other'
+}
 try {
     $inputData = [Console]::In.ReadToEnd() | ConvertFrom-Json
     $headers = @{}
@@ -31,6 +52,7 @@ try {
     [Console]::Out.Write(($output | ConvertTo-Json -Depth 5 -Compress))
 } catch {
     $status = 0
-    if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
-    [Console]::Out.Write((@{status=$status; headers=@{}; body=''} | ConvertTo-Json -Compress))
+    $kind = ''
+    if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode } else { $kind = Get-ErrorKind $_.Exception }
+    [Console]::Out.Write((@{status=$status; error=$kind; headers=@{}; body=''} | ConvertTo-Json -Compress))
 }

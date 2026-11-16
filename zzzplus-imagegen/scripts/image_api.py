@@ -4,6 +4,8 @@ import binascii
 import json
 import mimetypes
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +15,7 @@ from urllib.parse import urljoin, urlsplit, quote
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
-MODELS = ('gpt-image-2.6', 'grok-imagine-image-2.0')
+MODELS = ("gpt-image-2.6", "grok-imagine-image-2.0")
 MODEL = MODELS[0]
 MAX_RESPONSE = 80 * 1024 * 1024
 TRANSPORT = 'auto'
@@ -21,6 +23,43 @@ TRANSPORT = 'auto'
 
 class APIError(Exception):
     pass
+
+
+class HTTPStatusError(APIError):
+    """The server answered with a non-2xx status: the transport itself works."""
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+class NetworkError(APIError):
+    """No HTTP response was received. kind: ssl | timeout | connect | other."""
+    def __init__(self, kind, message):
+        super().__init__(message)
+        self.kind = kind
+
+
+# ssl/connect failures happen before any request body is sent, so nothing was submitted.
+NETWORK_MESSAGES = {
+    'ssl': '无法与图片接口建立 HTTPS 安全连接（SSL/TLS 握手失败或连接在发送前被中断），请求尚未发出，不会扣费。可显式使用 --transport urllib 重试。',
+    'connect': '无法连接到图片接口（域名解析或连接失败），请求尚未发出，不会扣费。请检查网络、代理或防火墙。',
+    'timeout': '等待图片接口响应超时；请求可能已被服务端接受，请勿盲目重复提交。',
+    'other': '网络请求失败；无法确认服务端是否已接受提交，请勿盲目重复提交。',
+}
+
+
+def network_error(kind, transport):
+    kind = kind if kind in NETWORK_MESSAGES else 'other'
+    return NetworkError(kind, f'[{transport}] ' + NETWORK_MESSAGES[kind])
+
+
+def classify_urllib_error(exc):
+    reason = getattr(exc, 'reason', exc)
+    if isinstance(reason, ssl.SSLError): return 'ssl'
+    if isinstance(reason, (TimeoutError, socket.timeout)) or isinstance(exc, (TimeoutError, socket.timeout)): return 'timeout'
+    if isinstance(reason, (socket.gaierror, ConnectionError)): return 'connect'
+    if isinstance(reason, OSError) and 'ssl' in type(reason).__name__.lower(): return 'ssl'
+    return 'other'
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -36,20 +75,21 @@ def powershell_request(url, headers, body=None, timeout=180):
     payload=json.dumps({'url':url,'headers':headers,'body':base64.b64encode(body).decode() if body is not None else None,'timeout':max(1,int(timeout))})
     try:
         result=subprocess.run([executable,'-NoProfile','-NonInteractive','-File',str(script)],input=payload.encode('utf-8'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout+15)
-        if result.returncode: raise APIError('PowerShell 请求未正常完成；未自动重试。')
+        if result.returncode: raise network_error('other','powershell')
         data=json.loads(result.stdout.decode('utf-8-sig'))
         status=int(data['status'])
-        if not 200<=status<300: raise APIError(f'图片接口 HTTP {status}；请求未自动重试。')
+        if status==0: raise network_error(data.get('error','other'),'powershell')
+        if not 200<=status<300: raise HTTPStatusError(status,f'图片接口 HTTP {status}；请检查服务端权限、余额及接口支持。请求未自动重试。')
         raw=base64.b64decode(data['body'],validate=True)
         if len(raw)>MAX_RESPONSE: raise APIError('接口响应超过安全大小限制。')
         return raw,data['headers'],status
-    except (OSError,subprocess.TimeoutExpired,ValueError,KeyError):
-        raise APIError('PowerShell 网络请求失败或超时；提交可能已被接受，请勿盲目重发。') from None
+    except subprocess.TimeoutExpired:
+        raise network_error('timeout','powershell') from None
+    except (OSError,ValueError,KeyError):
+        raise network_error('other','powershell') from None
 
 
-def request(url, headers, body=None, timeout=180):
-    if TRANSPORT=='powershell' or (TRANSPORT=='auto' and sys.platform=='win32'):
-        return powershell_request(url,headers,body,timeout)
+def urllib_request(url, headers, body=None, timeout=180):
     req = Request(url, data=body, headers=headers, method='POST' if body is not None else 'GET')
     try:
         with build_opener(NoRedirect).open(req, timeout=timeout) as r:
@@ -61,9 +101,43 @@ def request(url, headers, body=None, timeout=180):
         # Deliberately do not echo upstream response bodies or URL queries.
         code=e.code
         e.close()
-        raise APIError(f'图片接口 HTTP {code}；请检查服务端权限、余额及接口支持。请求未自动重试。') from None
-    except (URLError, TimeoutError, OSError):
-        raise APIError('网络请求失败或超时；提交可能已被服务端接受，请勿盲目重复提交。') from None
+        raise HTTPStatusError(code,f'图片接口 HTTP {code}；请检查服务端权限、余额及接口支持。请求未自动重试。') from None
+    except (URLError, TimeoutError, OSError) as e:
+        raise network_error(classify_urllib_error(e),'urllib') from None
+
+
+def request(url, headers, body=None, timeout=180):
+    if TRANSPORT=='powershell' or (TRANSPORT=='auto' and sys.platform=='win32'):
+        return powershell_request(url,headers,body,timeout)
+    return urllib_request(url,headers,body,timeout)
+
+
+def select_transport(provider, timeout=20):
+    """Pick a transport before any paid submission using a free GET /models.
+
+    Only the connection-level failures (no HTTP response) disqualify a transport;
+    any HTTP answer, even 401/404, proves the channel works. The paid POST is then
+    sent exactly once through the chosen transport and never re-sent through another.
+    Returns (transport, notes) where notes lists the transports that failed.
+    """
+    if TRANSPORT!='auto': return TRANSPORT,[]
+    candidates=['powershell','urllib'] if sys.platform=='win32' else ['urllib']
+    notes=[]
+    for name in candidates:
+        send=powershell_request if name=='powershell' else urllib_request
+        try:
+            send(provider.base_url+'/models',provider.headers,None,timeout)
+        except HTTPStatusError:
+            return name,notes
+        except NetworkError as e:
+            notes.append((name,e.kind))
+            continue
+        except APIError:
+            notes.append((name,'other'))
+            continue
+        return name,notes
+    detail='；'.join(f'{n}: {k}' for n,k in notes)
+    raise APIError(f'所有网络传输方式的连通性检查均失败（{detail}）；未提交生图请求，不会扣费。请检查网络、代理或系统时间。')
 
 
 def request_json(url, headers, body=None, timeout=180):

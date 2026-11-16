@@ -27,16 +27,26 @@ def main():
     p.add_argument('--interval',type=float,default=5)
     p.add_argument('--wait',type=float,default=600)
     p.add_argument('--timeout',type=float,default=180)
-    p.add_argument('--transport',choices=['auto','urllib','powershell'],default='auto',help='Windows auto 使用 PowerShell；其他系统使用 urllib；不会失败后自动切换重发')
+    p.add_argument('--transport',choices=['auto','urllib','powershell'],default='auto',help='auto 在提交前用免费的 GET /models 依次检测 PowerShell(仅Windows)、urllib，选第一个能连通的；选定后不会失败后自动切换重发')
     a=p.parse_args()
     try:
         image_api.TRANSPORT=a.transport
         image_api.MODEL=a.model
         provider=resolve(a.codex_home,a.profile,a.config,layers=a.config_layer)
         if a.mode=='check':
-            print(json.dumps({'provider':provider.name,'base_url':provider.base_url,'credential_source':provider.credential_source,'model':image_api.MODEL},ensure_ascii=False,indent=2))
-            return 0
+            info={'provider':provider.name,'base_url':provider.base_url,'credential_source':provider.credential_source,'model':image_api.MODEL}
+            try:
+                info['transport'],failed=image_api.select_transport(provider)
+                if failed: info['transport_failed']={n:k for n,k in failed}
+            except APIError as e:
+                info['transport']=None
+                info['transport_error']=str(e)
+            print(json.dumps(info,ensure_ascii=False,indent=2))
+            return 0 if info['transport'] else 1
         if min(a.interval,a.wait,a.timeout)<=0: raise APIError('超时和轮询间隔必须大于零。')
+        # Free connectivity probe; the paid request below is sent once via the chosen transport only.
+        image_api.TRANSPORT,failed=image_api.select_transport(provider)
+        if failed: print('提示：'+'、'.join(n for n,_ in failed)+' 连通性检查失败，已改用 '+image_api.TRANSPORT+'（提交前选定，不会重发）。',flush=True)
         spec=json.loads(a.async_spec.read_text(encoding='utf-8-sig')) if a.async_spec else None
         if a.mode=='poll':
             if not a.job_file: raise APIError('poll 需要 --job-file。')

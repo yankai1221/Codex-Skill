@@ -198,6 +198,84 @@ class HTTPContractTests(unittest.TestCase):
         finally:server.shutdown(); server.server_close(); t.join()
 
 
+class TransportSelectionTests(unittest.TestCase):
+    P = provider.Provider('https://relay.test/v1', {'Authorization': 'Bearer private-test-value'}, 'relay')
+
+    def setUp(self):
+        old = image_api.TRANSPORT
+        self.addCleanup(setattr, image_api, 'TRANSPORT', old)
+        image_api.TRANSPORT = 'auto'
+
+    def test_ps_ssl_failure_falls_back_to_urllib_for_free_probe_only(self):
+        calls = []
+        def ps(*a, **k):
+            calls.append('ps'); raise image_api.network_error('ssl', 'powershell')
+        def ur(*a, **k):
+            calls.append('urllib'); return b'{}', {}, 200
+        with patch.object(sys, 'platform', 'win32'), patch.object(image_api, 'powershell_request', ps), patch.object(image_api, 'urllib_request', ur):
+            name, failed = image_api.select_transport(self.P)
+        self.assertEqual(name, 'urllib')
+        self.assertEqual(failed, [('powershell', 'ssl')])
+        self.assertEqual(calls, ['ps', 'urllib'])
+
+    def test_http_error_status_still_counts_as_reachable(self):
+        def ps(*a, **k): raise image_api.HTTPStatusError(401, 'x')
+        with patch.object(sys, 'platform', 'win32'), patch.object(image_api, 'powershell_request', ps):
+            self.assertEqual(image_api.select_transport(self.P), ('powershell', []))
+
+    def test_all_transports_down_aborts_before_any_submission(self):
+        def down(*a, **k): raise image_api.network_error('ssl', 'x')
+        with patch.object(sys, 'platform', 'win32'), patch.object(image_api, 'powershell_request', down), patch.object(image_api, 'urllib_request', down):
+            with self.assertRaises(image_api.APIError) as cm:
+                image_api.select_transport(self.P)
+        self.assertIn('未提交', str(cm.exception))
+        self.assertNotIn('private-test-value', str(cm.exception))
+
+    def test_explicit_transport_is_respected_without_probing(self):
+        image_api.TRANSPORT = 'urllib'
+        with patch.object(image_api, 'urllib_request', side_effect=AssertionError('no probe')):
+            self.assertEqual(image_api.select_transport(self.P), ('urllib', []))
+
+    def test_failed_submit_is_never_resent_through_another_transport(self):
+        image_api.TRANSPORT = 'powershell'
+        calls = []
+        def ps(*a, **k):
+            calls.append('ps'); raise image_api.network_error('timeout', 'powershell')
+        with patch.object(image_api, 'powershell_request', ps), patch.object(image_api, 'urllib_request', side_effect=AssertionError('resent')):
+            with self.assertRaises(image_api.NetworkError):
+                image_api.generate(self.P, 'a cat', tempfile.gettempdir())
+        self.assertEqual(calls, ['ps'])
+
+    def test_errors_are_distinguished_and_never_http_0(self):
+        for kind in ('ssl', 'connect', 'timeout', 'other'):
+            msg = str(image_api.network_error(kind, 'powershell'))
+            self.assertNotIn('HTTP 0', msg)
+        self.assertNotEqual(str(image_api.network_error('ssl', 'u')), str(image_api.network_error('timeout', 'u')))
+        self.assertIn('不会扣费', str(image_api.network_error('ssl', 'u')))
+        self.assertIn('请勿盲目重复提交', str(image_api.network_error('timeout', 'u')))
+
+    def test_urllib_error_classification_hides_details(self):
+        import ssl as _ssl, socket as _socket
+        from urllib.error import URLError
+        self.assertEqual(image_api.classify_urllib_error(URLError(_ssl.SSLError('secret-detail'))), 'ssl')
+        self.assertEqual(image_api.classify_urllib_error(URLError(_socket.gaierror('x'))), 'connect')
+        self.assertEqual(image_api.classify_urllib_error(TimeoutError()), 'timeout')
+        with patch.object(image_api, 'build_opener') as bo:
+            bo.return_value.open.side_effect = URLError(_ssl.SSLError('secret-detail'))
+            with self.assertRaises(image_api.NetworkError) as cm:
+                image_api.urllib_request('https://relay.test/v1/models', {'Authorization': 'Bearer private-test-value'})
+        self.assertNotIn('secret-detail', str(cm.exception))
+        self.assertEqual(cm.exception.kind, 'ssl')
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows transport integration')
+    def test_powershell_reports_real_connect_failure_kind(self):
+        import socket
+        s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close()
+        with self.assertRaises(image_api.NetworkError) as cm:
+            image_api.powershell_request(f'https://127.0.0.1:{port}/v1/models', {'Authorization': 'Bearer x'}, None, 5)
+        self.assertEqual(cm.exception.kind, 'connect')
+
+
 class InstallerTests(unittest.TestCase):
     def test_install_upgrade_uninstall_preserve_original_backup(self):
         import subprocess

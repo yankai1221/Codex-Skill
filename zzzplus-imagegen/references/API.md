@@ -9,7 +9,7 @@
 - 官方 Skill 规范：https://developers.openai.com/codex/skills/ ，现重定向到 https://learn.chatgpt.com/docs/build-skills 。
 - Codex 配置参考：https://developers.openai.com/codex/config-reference/ 。
 
-文档确认：`POST /v1/images/generations` 使用 JSON，`model=gpt-image-2.6`（默认）或 `grok-imagine-image-2.0`、`prompt`；返回 `data[0].b64_json`。编辑使用 `/v1/images/edits`，multipart 实际文件上传。文档接受重复 image 或 image[]；本 Skill 严格使用重复 `image`。1–8 张 PNG/JPEG/WebP，每张最多 10MB，总计最多 40MB。不传 mask、size、quality、n、stream，避免声称服务端无法保证的能力。
+文档确认：`POST /v1/images/generations` 使用 JSON，`model=gpt-image-2.6`、`prompt`；返回 `data[0].b64_json`。编辑使用 `/v1/images/edits`，multipart 实际文件上传。文档接受重复 image 或 image[]；本 Skill 严格使用重复 `image`。1–8 张 PNG/JPEG/WebP，每张最多 10MB，总计最多 40MB。不传 mask、size、quality、n、stream，避免声称服务端无法保证的能力。
 
 所有运行地址来自当前 Provider；文档的上游地址仅作为来源，不是运行回退地址。base_url 去末尾斜杠，若未以 `/v1` 结尾则追加 `/v1`，再追加 `/images/generations` 或 `/images/edits`；保留已有代理路径。不接受 HTTP、地址中的用户名/密码、查询参数或片段。
 
@@ -45,4 +45,6 @@
 
 ## 请求方式
 
-Windows `auto` 预先选择 PowerShell 7/5.1，请求头和二进制请求体经标准输入传入随附 `http_request.ps1`；JSON 响应中的 base64 不直接显示给用户。macOS/Linux `auto` 使用 urllib。显式 `--transport` 可选择方式，但不会在请求失败后自动切换，以免重复扣费。真实测试中 urllib 多次返回上游 `upstream_server_error` 502，而相同地址、凭证和提示词的 PowerShell 对照成功；不能据此断言所有 urllib 或所有 macOS/Linux 环境都失败或成功。
+`auto` 在提交前用免费的 `GET /models` 依次检测：Windows 为 PowerShell 7/5.1 → urllib，其他系统为 urllib；任何 HTTP 应答（含 401/404）都视为该方式可用，仅“无应答”的连接级失败才淘汰。选定后，付费的 POST 只经该方式发送一次，失败后不会改用另一种方式重发。PowerShell 方式的请求头和二进制请求体经标准输入传入随附 `http_request.ps1`（脚本显式启用 TLS 1.2/1.3），JSON 响应中的 base64 不直接显示给用户。
+
+错误分类：`ssl`（握手失败或发送前连接被中断）、`connect`（域名解析/连接失败）、`timeout`（超时，服务端状态未知）、`other`，另有收到 HTTP 状态码的错误。分类只依据异常类型而非本地化文案，错误信息不含 URL 查询、响应正文或凭证。早期版本测试中 urllib 曾多次返回 502；1.0.3 用 gpt-image-2.6 实测 urllib 与 PowerShell 均成功出图，该 502 更可能来自当时已下架的 2.5 模型渠道，但未能确认完整根因。
